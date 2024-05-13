@@ -1,0 +1,41 @@
+{'author': 'thomas.tretbar@managedhosting.de',
+ 'description': 'BGP, OSPF, VRRP, Fans, Power/PSU, Temperature, RouterOS Info, '
+                'IPsec, Firewall, local file age and handling of watchdog '
+                'crashfile\n'
+                '\n'
+                '20240404 - 2.5.5 - ttr\n'
+                ' - fixed a bug in nonestablished BGP sessions in v7\n'
+                '\n'
+                '\n',
+ 'download_url': 'https://exchange.checkmk.com/p/mikrotik',
+ 'files': {'agent_based': ['mikrotik_bgp.py',
+                           'mikrotik_board.py',
+                           'mikrotik_fan.py',
+                           'mikrotik_file.py',
+                           'mikrotik_firewall.py',
+                           'mikrotik_ipsec.py',
+                           'mikrotik_ospf.py',
+                           'mikrotik_power.py',
+                           'mikrotik_psu.py',
+                           'mikrotik_vrrp.py'],
+           'agents': ['special/agent_mikrotik'],
+           'checkman': ['mikrotik_bgp',
+                        'mikrotik_board',
+                        'mikrotik_fan',
+                        'mikrotik_file',
+                        'mikrotik_firewall',
+                        'mikrotik_ipsec',
+                        'mikrotik_ospf',
+                        'mikrotik_power',
+                        'mikrotik_psu',
+                        'mikrotik_vrrp'],
+           'checks': ['agent_mikrotik'],
+           'doc': ['mikrotik'],
+           'web': ['plugins/wato/mikrotik.py',
+                   'plugins/wato/mikrotik_register.py']},
+ 'name': 'mikrotik',
+ 'title': 'MikroTik',
+ 'version': '2.5.5',
+ 'version.min_required': '2.0.0',
+ 'version.packaged': '2.0.0p36',
+ 'version.usable_until': None}

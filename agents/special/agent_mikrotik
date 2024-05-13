@@ -1,0 +1,606 @@
+#!/usr/bin/python3
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+# +------------------------------------------------------------------+
+# |             ____ _               _        __  __ _  __           |
+# |            / ___| |__   ___  ___| | __   |  \/  | |/ /           |
+# |           | |   | '_ \ / _ \/ __| |/ /   | |\/| | ' /            |
+# |           | |___| | | |  __/ (__|   <    | |  | | . \            |
+# |            \____|_| |_|\___|\___|_|\_\___|_|  |_|_|\_\           |
+# |                                                                  |
+# | Copyright Mathias Kettner 2014             mk@mathias-kettner.de |
+# +------------------------------------------------------------------+
+#
+# this file is part of mkp package "mikrotik"
+# see package description and ~/local/share/doc/check_mk/mikrotik
+# for details and maintainer
+#
+# check_mk is free software;  you can redistribute it and/or modify it
+# under the  terms of the  GNU General Public License  as published by
+# the Free Software Foundation in version 2.  check_mk is  distributed
+# in the hope that it will be useful, but WITHOUT ANY WARRANTY;  with-
+# out even the implied warranty of  MERCHANTABILITY  or  FITNESS FOR A
+# PARTICULAR PURPOSE. See the  GNU General Public License for more de-
+# tails. You should have  received  a copy of the  GNU  General Public
+# License along with GNU Make; see the file  COPYING.  If  not,  write
+# to the Free Software Foundation, Inc., 51 Franklin St,  Fifth Floor,
+# Boston, MA 02110-1301 USA.
+
+
+import sys, posix, time, binascii, socket, select, ssl, getopt, hashlib
+
+from collections import OrderedDict
+from string import ascii_uppercase as alphabet
+
+import pprint
+
+#
+# usage information
+#
+def usage():
+    sys.stderr.write("""checkmk MikroTik Agent
+
+USAGE: agent_mikrotik -u <USER> -p <PASSWORD> [OPTIONS] <HOST>
+       agent_mikrotik -h
+
+ARGUMENTS:
+  HOST                          Host name or IP address of the target device
+  -u USER, --user USER          Username for MikroTik router login
+  -p PASS, --pass PASS          Password for MikroTik router login
+
+OPTIONS:
+  -h, --help                    Show this help message and exit
+  -n, --nossl                   Do not use SSL to connect to API.
+  -c PORT, --connect PORT       Connect to this port. The default is 8728 (no SSL)
+                                or 8729 (SSL)
+  --debug                       Debug mode: write some debug messages,
+                                let Python exceptions come through
+  -i MODULES, --modules MODULES Modules to query. This is a comma separated list
+                                which may contain the keywords "bgp", "ospf",
+                                "health", "board", "vrrp", "ipsec", "chains" and
+                                "file".
+                                You can define to use only few of them to optimize
+                                performance. The default is "all".
+
+""")
+
+
+# taken from https://wiki.mikrotik.com/wiki/Manual:API_Python3, slightly modified
+class ApiRos:
+    "Routeros api"
+    def __init__(self, sk):
+        self.sk = sk
+        self.currenttag = 0
+
+    def login(self, username, pwd):
+        for repl, attrs in self.talk(["/login", "=name=" + username,
+                                      "=password=" + pwd]):
+          if repl == '!trap':
+            return False
+          elif '=ret' in attrs.keys():
+            chal = binascii.unhexlify((attrs['=ret']).encode(sys.stdout.encoding))
+            md = hashlib.md5()
+            md.update(b'\x00')
+            md.update(pwd.encode(sys.stdout.encoding))
+            md.update(chal)
+            for repl2, attrs2 in self.talk(["/login", "=name=" + username,
+                   "=response=00" + binascii.hexlify(md.digest()).decode(sys.stdout.encoding) ]):
+              if repl2 == '!trap':
+                return False
+        return True
+
+    def talk(self, words):
+        if self.writeSentence(words) == 0: return
+        r = []
+        while 1:
+            i = self.readSentence();
+            if len(i) == 0: continue
+            reply = i[0]
+            attrs = {}
+            for w in i[1:]:
+                j = w.find('=', 1)
+                if (j == -1):
+                    attrs[w] = ''
+                else:
+                    attrs[w[:j]] = w[j+1:]
+            r.append((reply, attrs))
+            if reply == '!done': return r
+
+    def writeSentence(self, words):
+        ret = 0
+        for w in words:
+            self.writeWord(w)
+            ret += 1
+        self.writeWord('')
+        return ret
+
+    def readSentence(self):
+        r = []
+        while 1:
+            w = self.readWord()
+            if w == '': return r
+            r.append(w)
+
+    def writeWord(self, w):
+        self.writeLen(len(w))
+        self.writeStr(w)
+
+    def readWord(self):
+        ret = self.readStr(self.readLen())
+        return ret
+
+    def writeLen(self, l):
+        if l < 0x80:
+            self.writeByte((l).to_bytes(1, sys.byteorder))
+        elif l < 0x4000:
+            l |= 0x8000
+            tmp = (l >> 8) & 0xFF
+            self.writeByte(((l >> 8) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte((l & 0xFF).to_bytes(1, sys.byteorder))
+        elif l < 0x200000:
+            l |= 0xC00000
+            self.writeByte(((l >> 16) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte(((l >> 8) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte((l & 0xFF).to_bytes(1, sys.byteorder))
+        elif l < 0x10000000:
+            l |= 0xE0000000
+            self.writeByte(((l >> 24) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte(((l >> 16) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte(((l >> 8) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte((l & 0xFF).to_bytes(1, sys.byteorder))
+        else:
+            self.writeByte((0xF0).to_bytes(1, sys.byteorder))
+            self.writeByte(((l >> 24) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte(((l >> 16) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte(((l >> 8) & 0xFF).to_bytes(1, sys.byteorder))
+            self.writeByte((l & 0xFF).to_bytes(1, sys.byteorder))
+
+    def readLen(self):
+        c = ord(self.readStr(1))
+        if (c & 0x80) == 0x00:
+            pass
+        elif (c & 0xC0) == 0x80:
+            c &= ~0xC0
+            c <<= 8
+            c += ord(self.readStr(1))
+        elif (c & 0xE0) == 0xC0:
+            c &= ~0xE0
+            c <<= 8
+            c += ord(self.readStr(1))
+            c <<= 8
+            c += ord(self.readStr(1))
+        elif (c & 0xF0) == 0xE0:
+            c &= ~0xF0
+            c <<= 8
+            c += ord(self.readStr(1))
+            c <<= 8
+            c += ord(self.readStr(1))
+            c <<= 8
+            c += ord(self.readStr(1))
+        elif (c & 0xF8) == 0xF0:
+            c = ord(self.readStr(1))
+            c <<= 8
+            c += ord(self.readStr(1))
+            c <<= 8
+            c += ord(self.readStr(1))
+            c <<= 8
+            c += ord(self.readStr(1))
+        return c
+
+    def writeStr(self, str):
+        n = 0;
+        while n < len(str):
+            r = self.sk.send(bytes(str[n:], 'UTF-8'))
+            if r == 0: raise RuntimeError("connection closed by remote end")
+            n += r
+
+    def writeByte(self, str):
+        n = 0;
+        while n < len(str):
+            r = self.sk.send(str[n:])
+            if r == 0: raise RuntimeError("connection closed by remote end")
+            n += r
+
+    def readStr(self, length):
+        # thx Ian
+        ret = b''
+        while len(ret) < length:
+            s = self.sk.recv(length - len(ret))
+            if s == b'': raise RuntimeError("connection closed by remote end")
+            if s >= (128).to_bytes(1, "big") :
+               return s
+            ret += s
+        return ret.decode(sys.stdout.encoding, "replace")
+
+def open_socket(dst, port, secure=True):
+  s = None
+  res = socket.getaddrinfo(dst, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
+  af, socktype, proto, canonname, sockaddr = res[0]
+  skt = socket.socket(af, socktype, proto)
+  if secure:
+    s = ssl.wrap_socket(skt, ssl_version=ssl.PROTOCOL_TLSv1_2, ciphers="ALL") #thx @Jenna
+  else:
+    s = skt
+  s.connect(sockaddr)
+  return s
+
+
+# convert list returned by api to a dict
+# before:  ['!re', '=.id=*391', '=spi=0xF598639', '=src-address=77.220.238.235', ...]
+# after:   {'.id': '*391', 'spi': '0xF598639', 'src-address': '77.220.238.235', ... }
+def list2dict(list):
+    return {item.split('=')[1]: item.split('=')[2] for item in list if len(item.split('=')) == 3 }
+
+# send command to api and return answer as list of dicts
+# readSentence returns one sentence only per connect, therefore need to loop
+# just read as long there is any info, then stop reading and return result
+def myapi(command):
+    for step in command:
+        apiros.writeSentence([step])
+    result=[]
+    while True:
+        new = apiros.readSentence()
+        if len(new) > 1:
+            result.append(list2dict(new))
+        else:
+            if opt_debug == True:
+                print('\n# DEBUG_OUTPUT myapi(%s)' % command)
+                pprint.pprint(result)
+                print('\n# DEBUG_OUTPUT myapi(%s)' % command)
+            return result
+
+# command line options
+short_options = 'hu:p:nc:i:'
+long_options  = [ 'help', 'user=', 'pass=', 'nossl', 'connect=', 'debug', 'modules=' ]
+
+try:
+    opts, args = getopt.getopt(sys.argv[1:], short_options, long_options)
+except (getopt.GetoptError, err):
+    sys.stderr.write("%s\n" % err)
+    sys.exit(1)
+
+opt_debug       = False
+opt_timeout     = 10
+opt_any_hostkey = ""
+nossl           = False
+port            = 8729
+
+
+host            = None
+user            = None
+password        = None
+mortypes        = [ 'all' ]
+
+# make commands api version aware
+command_set = {}
+
+# firmware 6
+command_set['6'] = {
+    "bgp"           : {
+                       "header"  : "mikrotik_bgp",
+                       "active"  : False,
+                       "command" : ["/routing/bgp/peer/print"],
+                       "filtered": ['name', 'established', 'remote-as', 'remote-address'],
+                       "required": True,
+                      },
+
+    "ospf"          : {
+                       "header"  : "mikrotik_ospf",
+                       "active"  : False,
+                       "command" : ["/routing/ospf/neighbor/print"],
+                       "filtered": ['router-id', 'address', 'state'],
+                       "required": True,
+                      },
+
+    "health"        : {
+                       "header"  : "mikrotik_health",
+                       "active"  : False,
+                       "command" : ["/system/health/print"]
+                      },
+
+    "board"         : {
+                       "header"  : "mikrotik_board",
+                       "active"  : False,
+                       "command" : ["/system/resource/print"]
+                      },
+
+    "vrrp"          : {
+                       "header"  : "mikrotik_vrrp",
+                       "active"  : False,
+                       "command" : ["/interface/vrrp/print"],
+                       "filtered": ['name', 'vrid', 'invalid', 'mac-address', 'master', 
+                                    'backup', 'interface', 'running', 'disabled'],
+                      },
+
+    "ipsec"         : {
+                       "header"  : "mikrotik_ipsec",
+                       "active"  : False,
+                       "command" : ["/ip/ipsec/peer/print"]
+                      },
+
+    "file"          : {
+                       "header"  : "mikrotik_file",
+                       "active"  : False,
+                       "command" : ["/file/print"],
+                       "filtered": ['name', 'creation-time', 'type'],
+                       "required": True
+                      },
+
+    "firewall"      : {
+                       "header"  : "mikrotik_firewall",
+                       "active"  : False,
+                       "command" : ["/ip/firewall/filter/print"]
+                      },
+}
+
+# firmware 7 slightly different from 6
+command_set['7'] = command_set['6'].copy()
+command_set['7']['bgp']= {
+                       "header"   : "mikrotik_bgp",
+                       "active"   : False,
+                       "command"  : ["/routing/bgp/connection/print"],
+                       "filtered" : ['name', 'established', 'remote.as', 'remote.address'],
+                       "required" : True
+                      }
+
+for o,a in opts:
+    if o in [ '--debug' ]:
+        opt_debug = True
+    elif o in [ '-u', '--user' ]:
+        user = a
+    elif o in [ '-p', '--pass' ]:
+        password = a
+    elif o in [ '-n', '--nossl' ]:
+        nossl   = True
+        port    = 8729
+    elif o in [ '-c', '--connect' ]:
+        port    = a
+    elif o in [ '-i', '--modules' ]:
+        mortypes = a.split(',')
+    elif o in [ '-h', '--help' ]:
+        usage()
+        sys.exit(0)
+
+if len(args) == 1:
+    host = args[0]
+
+if not args:
+    sys.stderr.write("ERROR: No arguments.\n\n")
+    usage()
+    sys.exit(1)
+
+if host == None:
+    sys.stderr.write("ERROR: No host given.\n\n")
+    usage()
+    sys.exit(1)
+
+if user == None:
+    sys.stderr.write("ERROR: No user name given.\n\n")
+    usage()
+    sys.exit(1)
+
+if password == None:
+    sys.stderr.write("ERROR: No password given.\n\n")
+    usage()
+    sys.exit(1)
+
+# connect to API
+if nossl:
+    s = open_socket(host, port, False)
+else:
+    s = open_socket(host, port, True)
+
+if s is None:
+    print ('could not open socket')
+    sys.exit(1)
+
+apiros = ApiRos(s);
+if not apiros.login(user, password):
+    print ('cannot log in')
+    sys.exit(1)
+
+
+# special agent header
+print ("<<<check_mk>>>")
+print ("Version: 2.5.x-mikrotik_agent")
+
+# detect firmware version and set commands
+version=myapi(["/system/resource/print"])[0]['version'].split('.')[0]
+try:
+    command_options = command_set[version]
+except:
+    # just take most recent one
+    command_options = command_set['7']
+
+# which modules are requested
+for module in command_options.keys():
+    try:
+        if mortypes.index("all") >= 0:
+            command_options[module]["active"] = True
+    except ValueError:
+        pass
+
+    try:
+        if mortypes.index(module) >= 0:
+            command_options[module]["active"] = True
+    except ValueError:
+        pass
+
+# this function prints info
+def print_filtered():
+    for line in out:
+
+        # reset info block
+        info_block = []
+
+        for what in command_options[module]["filtered"]:
+           try:
+               info_block.append("%s %s" % (what, line[what]))
+           except:
+               continue
+
+        # boarding completed?
+        try:
+            if command_options[module]["required"] and len(info_block) == len(command_options[module]["filtered"]):
+                print('\n'.join(info_block))
+                continue
+        except:
+            pass
+        
+        print('\n'.join(info_block))
+
+
+# fetch information from api, loop thru modules, prepare output for checkmk
+for module in command_options.keys():
+
+    # to be done?
+    if command_options[module]["active"] != True:
+        continue
+
+    # read and execute api command
+    command = command_options[module]["command"]
+    out     = myapi(command)
+
+
+    # any result?
+    if not out:
+        continue
+
+    # declare
+    header  = 'mikrotik_%s' % module
+    print ('<<<%s>>>' % header)
+
+    # these are very similar:
+    if module == "bgp" or module == "ospf" or module == "vrrp" or module == 'file':
+
+        # BGP from a RouterOS V6 devivce is already complete
+        # newer OS we have to inject info from another api call
+        if version == '7' and module == "bgp":
+            command = ["/routing/bgp/session/print"]
+            bgpout = myapi(command)
+
+            # correlation is kinda tricky: 'name' ist suffixed in second call
+            # 1. loop thru first api call, this is connection config
+            # 2. then find a session info with a name starting with connection name
+            # 3. take established from there (which is missing if not established)
+            i = 0
+            for line in out:
+                for bgpline in bgpout:
+                    try:
+                        if bgpline['name'].startswith(line['name']):
+                            out[i]['established'] = bgpline['established']
+                            bgpout.remove(bgpline)
+                    except KeyError:
+                        out[i]['established'] = 'false'
+                i += 1
+
+        # tell the others
+        print_filtered()
+
+    # split health into different checks
+    elif header == "mikrotik_health":
+
+        # rewrite from version 7
+        if version == '7':
+            newout = {}
+            for item in list(out):
+                key = item['name']
+                val = float(item['value'])*1000 if item['type'] == 'A' else item['value']
+                newout[key] = val
+            out = []
+            out.append(newout)
+
+        # use these as (string-)filter for output _and_ check declaration
+        health_items = ['fan', 'temp', 'power', 'psu']
+
+        # sort all information to health_items, just compare names
+        info = {}
+        for line in out:
+            for what in health_items:
+                info[what] = dict(filter(lambda item: what in item[0], line.items()))
+
+
+        # special handling if name is not sufficiant
+        for special in ['current', 'voltage']:
+            info['power'].update(dict(filter(lambda item: special in item[0], 
+                                                 line.items())))
+
+        # fake temperature to be a linux sensor
+        print('<<<lnx_thermal:sep(124)>>>')
+        for what in (info['temp']):
+            if 'temperature' in what:
+                print("%s|enabled|x86_pkg_temp|%s000|0|passive|0|passive" % (
+                       what, info['temp'][what]))
+
+        # print all health_items that contain values, skip some
+        for what in health_items:
+            if what in ['temp']:
+                continue
+
+            if info[what]:
+                print ("<<<mikrotik_%s>>>" % what)
+                for item in info[what]:
+                    print ("%s %s" % ( item, info[what][item]))
+
+    # ipsec
+    elif header == "mikrotik_ipsec":
+
+        # break on any error (unexpected API response)
+        try:
+            for line in out:
+                print ("peer %s %s %s" % (
+                        line['name'], 
+                        line['local-address'].split('/')[0], 
+                        line['address'].split('/')[0]))
+
+            command = ["/ip/address/print"]
+            for line in myapi(command):
+                if line['invalid'] == 'true':
+                    print ("invip %s %s" % (
+                            line['address'].split('/')[0], 
+                            line['actual-interface']))
+
+            # ipsec main info: both api calls before are only to detect a standby gateway
+            command = ["/ip/ipsec/installed-sa/print"]
+            for line in myapi(command):
+                try:
+                    print ("sa %s %s %s %s %s" % (
+                            line['src-address'], 
+                            line['dst-address'], 
+                            line['state'], 
+                            line['current-bytes'], 
+                            line['current-packets']))
+                except:
+                    print ("sa %s %s %s 0 0" % (
+                            line['src-address'], 
+                            line['dst-address'], 
+                            line['state']))
+        except:
+            print ('<<<>>>')
+
+    # chains
+    elif header == "mikrotik_firewall":
+
+
+        # remove duplicates, that are reported by api for whatever reason
+        # - convert list of dicts into list of tuples containing dict
+        # - hash (set comprehension)
+        # - recreate dict
+        out = [dict(t) for t in {tuple(d.items()) for d in out}]
+
+        # print the information we have, do not stop on missing ones
+        for line in out:
+             for what in ['comment', '.id', 'chain', 'bytes', 'packets', 'disabled']:
+                 try:
+                     print ("%s %s" % (what, line[what]))
+                 except:
+                     print ("%s None" % (what))
+
+    # any other key-value information with no special handling
+    else:
+        for line in out:
+            for item in line:
+                print ("%s %s" % ( item, line[item]))
+
+
+    print ('<<<>>>')
+# This is the end, my friend.

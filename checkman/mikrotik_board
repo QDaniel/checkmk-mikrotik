@@ -1,0 +1,25 @@
+title: MikroTik Routerboard Info
+agents: mikrotik
+catalog: hw/network/mikrotik
+license: GPL
+distribution: check_mk
+description:
+ Info of a MikroTik RouterOS Board
+
+ This check will report model, serial number and firmware info for
+ a MikroTik RouterOS device. If a firmware version is defined,
+ the check will {WARN} if installed version is below.
+
+ To connect to the MikroTik device a special datasource program is
+ used (SNMP won't report this information): {MikroTik RouterOS} in
+ Setup > Agents> Other integrations > Hardware
+
+item:
+ None
+
+perfdata:
+ None
+
+inventory:
+ One service per device.
+

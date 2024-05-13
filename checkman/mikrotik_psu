@@ -1,0 +1,25 @@
+title: MikroTik Power Usage
+agents: mikrotik
+catalog: hw/network/mikrotik
+license: GPL
+distribution: check_mk
+description:
+ PSU of a MikroTik device
+
+ This check will report PSU state and is {CRIT} if not reported 'ok'.
+ If API returns current/voltage it is ignored here, because already
+ handled in {mikrotik_power}.
+
+ To connect to the MikroTik device a special datasource program is
+ used (SNMP won't report this information): {MikroTik RouterOS} in
+ Setup > Agents> Other integrations > Hardware
+
+item:
+ psu<number>
+
+perfdata:
+ None
+
+inventory:
+ One service per device.
+

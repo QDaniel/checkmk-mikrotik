@@ -1,0 +1,101 @@
+Description:  MikroTik RouterOS Info
+               - BGP
+               - OSPF
+               - VRRP
+               - Fans
+               - Power/PSU
+               - Temperature
+               - RouterOS Info
+               - IPsec
+               - Firewall Filter rules
+               - age local files
+               - handling of watchdog crashfile
+
+Maintainer:   thomas.tretbar@managedhosting.de (ttr)
+
+Created:      2018-10
+
+Usage:        - mkp package
+              - Datasource program for API access
+                (enable API access on device)
+              - also use SNMP to get interface, CPU, Mem, fs ...
+              - firewall item is original rule comment
+                - shortening possible: everything after "checkmk: " is
+                   used if this keyword is found
+
+
+Changelog:
+20240404 - 2.5.5 - ttr
+ - fixed a bug in nonestablished BGP sessions in v7
+20240216 - 2.5.4 - ttr
+ - reworked power section
+20240216 - 2.5.3 - ttr
+ - OSPF works in RouterOS v7
+ - shortened OSPF summary
+ - OSPF also shows IPv6 (RouterOS v7 only)
+ - reworked specical agent
+ - BGP works correctly on recent v7 builds
+2024-02-01 - 2.5.2 - ttr
+ - fixed a bug with multibyte in API call 
+2024-02-01 - 2.5.1 - ttr
+ - fixed crash in power consumption calculation on new OS
+ - special handling of autosupout.rif 
+2024-01-19 - 2.5.0 - ttr
+ - fixed crash on CHR
+ - adjusted board section: need to 'cmk -R' for 'RouterOS Info'
+2023-11-03 - 2.4.1 - ttr
+ - fixed a crash in BGP when info is missing
+2023-09-26 - 2.4.0 - ttr
+ - BGP and file age now work on RouterOS v7
+2023-08-09 - 2.3.4 - ttr
+ - should now run on 2.1 and 2.2
+2023-04-04 - 2.3.3 - ttr
+ - fixed a crash on multiple ipsec 
+2023-03-08 - 2.3.2 - ttr
+ - added GPL headers
+2023-03-06 - 2.3.1 - ttr
+ - fixed PSU discovery
+2023-03-06 - 2.3.0 - ttr
+ - new versioning scheme (2.0.2.3 supersedes 2.2)
+ - complete rewrite checkmk 2.x
+ - datasource uses os-python3 and different SSL ciphers
+ - shortened summary texts of services
+ - RouterOS Info can check for a minimum version
+ - Fan does not use includes
+ - Firewall Filter omits packets/s
+ - IPsec shows network usage
+ - Temperature is now different check, reinventarization needed
+2022-05-11 - 2.2 - ttr
+   - now handles orphaned ipsec SA
+   - increased SA count is now WARN, not CRIT
+2021-01-19 - 2.1 - ttr
+   - added file age
+   - minor bugfix in firewall
+2020-10-28 - 2.0a - ttr
+   - bugfix in PSU
+2020-10-28 - 2.0 - ttr
+   - major rewrite of special agent
+     - now using python3
+     - using builtin api connector: ommitting librouteros
+   - added firewall filter rules
+2020-09 -21  1.2a - ttr
+   - fixed wrong header info
+2020-09 -  1.1/1.2 - ttr
+   - major rewrite for checkmk 1.6
+2020-01-20 -  1.0 - ttr
+   - started major rewrite for RouterOS switches:
+     "Routerboard Info" is now "RouterOS Info"
+   - special agent 3.0
+   - added psu (beside power)
+2020-01-20 -  0.5 - ttr
+   - added IPsec info
+   - inventory now ignores disabled vrrp
+2019-07-23 -  0.4a - ttr
+   - fixed bug in electrical current calculation
+2019-04-23 -  0.4 - ttr
+   - added power info on devices with 2 PSU
+     incl. power-loss detection
+   - fixed bug in board info for AP devices
+2019-04-23 -  0.3 - ttr
+2018-10-17 -  0.2 - ttr
+2018-10-12 - initial release - ttr
