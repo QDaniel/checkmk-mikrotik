@@ -26,7 +26,8 @@
 # Boston, MA 02110-1301 USA.
 
 
-import sys, posix, time, binascii, socket, select, ssl, getopt, hashlib
+import sys, posix, time, binascii, socket, select, ssl, getopt, hashlib, re
+from datetime import timedelta
 
 from collections import OrderedDict
 from string import ascii_uppercase as alphabet
@@ -230,6 +231,12 @@ def open_socket(dst, port, secure=True):
 def list2dict(list):
     return {item.split('=')[1]: item.split('=')[2] for item in list if len(item.split('=')) == 3 }
 
+def parse_mkt_timedelta(time):
+	
+    time_dict = re.match(r'((?P<weeks>\d+)w)?((?P<days>\d+)d)?((?P<hours>\d+)h)?((?P<minutes>\d+)m)?((?P<seconds>\d+)s)?((?P<milliseconds>\d+)j)?((?P<microseconds>\d+)us)?', time.replace("ms", "j")).groupdict()
+    delta = timedelta(**{key: int(value) for key, value in time_dict.items() if value}).total_seconds() 
+    return delta
+
 # send command to api and return answer as list of dicts
 # readSentence returns one sentence only per connect, therefore need to loop
 # just read as long there is any info, then stop reading and return result
@@ -239,6 +246,7 @@ def myapi(command):
     result=[]
     while True:
         new = apiros.readSentence()
+
         if len(new) > 1:
             result.append(list2dict(new))
         else:
@@ -276,71 +284,142 @@ command_set = {}
 # firmware 6
 command_set['6'] = {
     "bgp"           : {
-                       "header"  : "mikrotik_bgp",
                        "active"  : False,
-                       "command" : ["/routing/bgp/peer/print"],
-                       "filtered": ['name', 'established', 'remote-as', 'remote-address'],
-                       "required": True,
+                       "cmds"    : {
+                           "mikrotik_bgp": {
+                               "command" : ["/routing/bgp/peer/print"],
+#                               "filtered": ['name', 'established', 'remote-as', 'remote-address'],
+#                               "required": True,
+                           }
+                      }
                       },
 
     "ospf"          : {
-                       "header"  : "mikrotik_ospf",
                        "active"  : False,
-                       "command" : ["/routing/ospf/neighbor/print"],
-                       "filtered": ['router-id', 'address', 'state'],
-                       "required": True,
+                       "cmds"    : {
+                           "mikrotik_ospf": {
+                               "command" : ["/routing/ospf/neighbor/print"],
+                               "filtered": ['router-id', 'address', 'state'],
+                               "required": True,
+                           }
+                      }
                       },
 
     "health"        : {
-                       "header"  : "mikrotik_health",
                        "active"  : False,
-                       "command" : ["/system/health/print"]
+                       "cmds"    : {
+                           "mikrotik_health": {
+                               "command" : ["/system/health/print"],
+                           }
+                      }
                       },
 
     "board"         : {
-                       "header"  : "mikrotik_board",
                        "active"  : False,
-                       "command" : ["/system/resource/print"]
+                       "cmds"    : {
+                           "mikrotik_board": {
+                               "command" : ["/system/resource/print"],
+                           }
+                      }
                       },
 
     "vrrp"          : {
-                       "header"  : "mikrotik_vrrp",
                        "active"  : False,
-                       "command" : ["/interface/vrrp/print"],
-                       "filtered": ['name', 'vrid', 'invalid', 'mac-address', 'master', 
-                                    'backup', 'interface', 'running', 'disabled'],
+                       "cmds"    : {
+                           "mikrotik_vrrp": {
+                               "command" : ["/interface/vrrp/print"],
+                               "filtered": ['name', 'vrid', 'invalid', 'mac-address', 'master', 
+                                            'backup', 'interface', 'running', 'disabled'],
+                           }
+                      }
                       },
 
     "ipsec"         : {
-                       "header"  : "mikrotik_ipsec",
                        "active"  : False,
-                       "command" : ["/ip/ipsec/peer/print"]
-                      },
-
-    "file"          : {
-                       "header"  : "mikrotik_file",
-                       "active"  : False,
-                       "command" : ["/file/print"],
-                       "filtered": ['name', 'creation-time', 'type'],
-                       "required": True
+                       "cmds"    : {
+                           "mikrotik_ipsec": {
+                               "command" : ["/ip/ipsec/peer/print"],
+                           },
+                           "mikrotik_ip_address": {
+                               "command" : ["/ip/address/print"],
+                           },
+                           "mikrotik_ipsec_sa": {
+                               "command" : ["/ip/ipsec/installed-sa/print"],
+                           }
+                      }
                       },
 
     "firewall"      : {
-                       "header"  : "mikrotik_firewall",
                        "active"  : False,
-                       "command" : ["/ip/firewall/filter/print"]
+                       "cmds"    : {
+                           "mikrotik_firewall": {
+                               "command" : ["/ip/firewall/filter/print"],
+                           }
+                      }
                       },
+
+    "interfaces"    : { 
+                      "active"  : False,
+                       "cmds"    : {
+                           "mikrotik_interfaces": {
+                               "command" : ["/interface/print"],
+                           }
+                      }
+                      },
+
+    "netwatch"    : {
+                       "active"  : False,
+                       "cmds"    : {
+                           "mikrotik_netwatch": {
+                               "command" : ["/tool/netwatch/print"],
+                           }
+                      }
+                      },
+
+#    "file"          : {
+#                       "active"  : False,
+#                       "cmds"    : {
+#                           "mikrotik_file": {
+#                               "command" : ["/file/print"],
+#                               "filtered": ['name', 'creation-time', 'type'],
+#                               "required": True,
+#                           }
+#                      }
+#                      },
+
 }
 
 # firmware 7 slightly different from 6
 command_set['7'] = command_set['6'].copy()
 command_set['7']['bgp']= {
-                       "header"   : "mikrotik_bgp",
-                       "active"   : False,
-                       "command"  : ["/routing/bgp/connection/print"],
-                       "filtered" : ['name', 'established', 'remote.as', 'remote.address'],
-                       "required" : True
+                       "active"  : False,
+                       "cmds"    : {
+                           "mikrotik_bgp": {
+                               "command" : ["/routing/bgp/connection/print"],
+#                               "filtered": ['name', 'established', 'remote.as', 'remote.address'],
+#                               "required": True,
+                           },
+                           "mikrotik_bgp_sessions": {
+                               "command" : ["/routing/bgp/session/print"],
+#                               "filtered": ['name', 'established', 'remote.as', 'remote.address'],
+#                               "required": True,
+                           }
+
                       }
+                      }
+
+command_set['7']['wireguard'] = {
+                       "active"  : False,
+                       "cmds"    : {
+                           "mikrotik_wireguard": {
+                               "command" : ["/interface/wireguard/print"],
+                           },
+                           "mikrotik_wireguard_peers": {
+                               "command" : ["/interface/wireguard/peers/print"],
+                           }
+                      }
+                      }
+
 
 for o,a in opts:
     if o in [ '--debug' ]:
@@ -432,7 +511,7 @@ def print_filtered():
         # reset info block
         info_block = []
 
-        for what in command_options[module]["filtered"]:
+        for what in command_options[module]['cmds'][header]["filtered"]:
            try:
                info_block.append("%s %s" % (what, line[what]))
            except:
@@ -440,7 +519,7 @@ def print_filtered():
 
         # boarding completed?
         try:
-            if command_options[module]["required"] and len(info_block) == len(command_options[module]["filtered"]):
+            if command_options[module]['cmds'][header]["required"] and len(info_block) == len(command_options[module]['cmds'][header]["filtered"]):
                 print('\n'.join(info_block))
                 continue
         except:
@@ -456,151 +535,155 @@ for module in command_options.keys():
     if command_options[module]["active"] != True:
         continue
 
-    # read and execute api command
-    command = command_options[module]["command"]
-    out     = myapi(command)
+
+    for header in command_options[module]['cmds'].keys():
+
+        # read and execute api command
+        command = command_options[module]['cmds'][header]["command"]
+        out     = myapi(command)
 
 
-    # any result?
-    if not out:
-        continue
+        # any result?
+        if not out:
+            continue
 
-    # declare
-    header  = 'mikrotik_%s' % module
-    print ('<<<%s>>>' % header)
+        # declare
+        print ('<<<%s>>>' % header)
 
-    # these are very similar:
-    if module == "bgp" or module == "ospf" or module == "vrrp" or module == 'file':
+        # these are very similar:
+        if "filtered" in command_options[module]['cmds'][header].keys():
+            print_filtered()
 
-        # BGP from a RouterOS V6 devivce is already complete
-        # newer OS we have to inject info from another api call
-        if version == '7' and module == "bgp":
-            command = ["/routing/bgp/session/print"]
-            bgpout = myapi(command)
+        # split health into different checks
+        elif header == "mikrotik_health":
 
-            # correlation is kinda tricky: 'name' ist suffixed in second call
-            # 1. loop thru first api call, this is connection config
-            # 2. then find a session info with a name starting with connection name
-            # 3. take established from there (which is missing if not established)
-            i = 0
+            # rewrite from version 7
+            if version == '7':
+                newout = {}
+                for item in list(out):
+                    if 'name' in item.keys():
+                        key = item['name']
+                        val = float(item['value'])*1000 if item['type'] == 'A' else item['value']
+                        newout[key] = val
+                out = []
+                out.append(newout)
+
+            # use these as (string-)filter for output _and_ check declaration
+            health_items = ['fan', 'temp', 'power', 'psu']
+
+            # sort all information to health_items, just compare names
+            info = {}
             for line in out:
-                for bgpline in bgpout:
-                    try:
-                        if bgpline['name'].startswith(line['name']):
-                            out[i]['established'] = bgpline['established']
-                            bgpout.remove(bgpline)
-                    except KeyError:
-                        out[i]['established'] = 'false'
-                i += 1
+                for what in health_items:
+                    info[what] = dict(filter(lambda item: what in item[0], line.items()))
 
-        # tell the others
-        print_filtered()
 
-    # split health into different checks
-    elif header == "mikrotik_health":
+            # special handling if name is not sufficiant
+            for special in ['current', 'voltage']:
+                info['power'].update(dict(filter(lambda item: special in item[0], 
+                                                     line.items())))
 
-        # rewrite from version 7
-        if version == '7':
-            newout = {}
-            for item in list(out):
-                key = item['name']
-                val = float(item['value'])*1000 if item['type'] == 'A' else item['value']
-                newout[key] = val
-            out = []
-            out.append(newout)
+            # fake temperature to be a linux sensor
+            print('<<<lnx_thermal:sep(124)>>>')
+            for what in (info['temp']):
+                if 'temperature' in what:
+                    print("%s|enabled|x86_pkg_temp|%s000|0|passive|0|passive" % (
+                           what, info['temp'][what]))
 
-        # use these as (string-)filter for output _and_ check declaration
-        health_items = ['fan', 'temp', 'power', 'psu']
-
-        # sort all information to health_items, just compare names
-        info = {}
-        for line in out:
+            # print all health_items that contain values, skip some
             for what in health_items:
-                info[what] = dict(filter(lambda item: what in item[0], line.items()))
+                if what in ['temp']:
+                    continue
 
+                if info[what]:
+                    print ("<<<mikrotik_%s>>>" % what)
+                    for item in info[what]:
+                        print ("%s %s" % ( item, info[what][item]))
 
-        # special handling if name is not sufficiant
-        for special in ['current', 'voltage']:
-            info['power'].update(dict(filter(lambda item: special in item[0], 
-                                                 line.items())))
+        # ipsec
+        elif header == "rem_mikrotik_ipsec":
 
-        # fake temperature to be a linux sensor
-        print('<<<lnx_thermal:sep(124)>>>')
-        for what in (info['temp']):
-            if 'temperature' in what:
-                print("%s|enabled|x86_pkg_temp|%s000|0|passive|0|passive" % (
-                       what, info['temp'][what]))
+            # break on any error (unexpected API response)
+            try:
+                for line in out:
+                    print ("peer %s %s %s" % (
+                            line['name'], 
+                            line['local-address'].split('/')[0], 
+                            line['address'].split('/')[0]))
 
-        # print all health_items that contain values, skip some
-        for what in health_items:
-            if what in ['temp']:
-                continue
+                command = ["/ip/address/print"]
+                for line in myapi(command):
+                    if line['invalid'] == 'true':
+                        print ("invip %s %s" % (
+                                line['address'].split('/')[0], 
+                                line['actual-interface']))
 
-            if info[what]:
-                print ("<<<mikrotik_%s>>>" % what)
-                for item in info[what]:
-                    print ("%s %s" % ( item, info[what][item]))
+                # ipsec main info: both api calls before are only to detect a standby gateway
+                command = ["/ip/ipsec/installed-sa/print"]
+                for line in myapi(command):
+                    try:
+                        print ("sa %s %s %s %s %s" % (
+                                line['src-address'], 
+                                line['dst-address'], 
+                                line['state'], 
+                                line['current-bytes'], 
+                                line['current-packets']))
+                    except:
+                        print ("sa %s %s %s 0 0" % (
+                                line['src-address'], 
+                                line['dst-address'], 
+                                line['state']))
+            except:
+                print ('<<<>>>')
 
-    # ipsec
-    elif header == "mikrotik_ipsec":
+        # chains
+        elif header == "mikrotik_firewall":
 
-        # break on any error (unexpected API response)
-        try:
+            # remove duplicates, that are reported by api for whatever reason
+            # - convert list of dicts into list of tuples containing dict
+            # - hash (set comprehension)
+            # - recreate dict
+            out = [dict(t) for t in {tuple(d.items()) for d in out}]
+
+            # print the information we have, do not stop on missing ones
             for line in out:
-                print ("peer %s %s %s" % (
-                        line['name'], 
-                        line['local-address'].split('/')[0], 
-                        line['address'].split('/')[0]))
+                 for what in ['comment', '.id', 'chain', 'bytes', 'packets', 'disabled']:
+                     try:
+                         print ("%s %s" % (what, line[what]))
+                     except:
+                         print ("%s None" % (what))
 
-            command = ["/ip/address/print"]
-            for line in myapi(command):
-                if line['invalid'] == 'true':
-                    print ("invip %s %s" % (
-                            line['address'].split('/')[0], 
-                            line['actual-interface']))
+        # any other key-value information with no special handling
+        else:
+            for line in out:
+                for item in line:
+                    print ("%s %s" % ( item, line[item]))
 
-            # ipsec main info: both api calls before are only to detect a standby gateway
-            command = ["/ip/ipsec/installed-sa/print"]
-            for line in myapi(command):
-                try:
-                    print ("sa %s %s %s %s %s" % (
-                            line['src-address'], 
-                            line['dst-address'], 
-                            line['state'], 
-                            line['current-bytes'], 
-                            line['current-packets']))
-                except:
-                    print ("sa %s %s %s 0 0" % (
-                            line['src-address'], 
-                            line['dst-address'], 
-                            line['state']))
-        except:
-            print ('<<<>>>')
+        if header == "mikrotik_board":
+            if 'total-memory' in out[0] and 'free-memory' in out[0]:
+                print ('<<<mem>>>')
+                print ("MemTotal: %s kB" % int(int(out[0]['total-memory']) / 1024))
+                print ("MemFree: %s kB" % int(int(out[0]['free-memory']) / 1024))
+                print ("Buffers: 0 kB")
+                print ("Cached: 0 kB")
+                print ("Dirty: 0 kB")
+                print ("SwapFree: 0 kB")
+                print ("SwapTotal: 0 kB")
+                print ("Writeback: 0 kB")
+                print ("VmallocTotal: 0 kB")
 
-    # chains
-    elif header == "mikrotik_firewall":
-
-
-        # remove duplicates, that are reported by api for whatever reason
-        # - convert list of dicts into list of tuples containing dict
-        # - hash (set comprehension)
-        # - recreate dict
-        out = [dict(t) for t in {tuple(d.items()) for d in out}]
-
-        # print the information we have, do not stop on missing ones
-        for line in out:
-             for what in ['comment', '.id', 'chain', 'bytes', 'packets', 'disabled']:
-                 try:
-                     print ("%s %s" % (what, line[what]))
-                 except:
-                     print ("%s None" % (what))
-
-    # any other key-value information with no special handling
-    else:
-        for line in out:
-            for item in line:
-                print ("%s %s" % ( item, line[item]))
-
-
-    print ('<<<>>>')
+            print ('<<<labels:sep(0)>>>')
+            print ('{"cmk/os_family":"mikrotik"}')
+            if 'board-name' in out[0] and out[0]['board-name'] == "CHR":
+                print ('{"cmk/device_type":"vm"}')
+            if 'uptime' in out[0]:
+                print ('<<<uptime>>>')
+                print (parse_mkt_timedelta(out[0]['uptime']))
+            if 'total-hdd-space' in out[0] and 'free-hdd-space' in out[0]:
+                print ('<<<df>>>')
+                total_hd = int(out[0]['total-hdd-space'])/1024
+                free_hd  = int(out[0]['free-hdd-space'])/1024
+                print ('Mikrotik ROS %s %s %s 0%% /' % (int(total_hd), int(total_hd - free_hd), int(free_hd)))
+  
+#        print ('<<<>>>')
 # This is the end, my friend.

@@ -97,7 +97,7 @@ def parse_mikrotik_firewall(string_table):
             continue
 
         if line[0] == 'bytes':
-            data[rule]['if_total_bps'] = int(line[1])
+            data[rule]['if_total_octets'] = int(line[1])
             continue
 
         if line[0] in ['chain', 'disabled']:
@@ -130,7 +130,7 @@ def check_mikrotik_firewall(item, params, section):
     now         = time.time()
 
     # a now disabled rule was enabled on discovery, so we drop some WARN
-    if data['disabled'] != 'None':
+    if data['disabled'] == 'true':
         mysummary.append('disabled: %s(!)' % data['disabled'])
 
     mysummary.append('Chain: %s' % data['chain'])
@@ -138,8 +138,8 @@ def check_mikrotik_firewall(item, params, section):
 
     # metrics
     bytes_rate = get_rate(value_store, "mikrotik_firewall.%s.bytes" % 
-                                                          item, now, data['if_total_bps'])
-    yield Metric('if_total_bps',  int(bytes_rate*8))
+                                                          item, now, data['if_total_octets'])
+    yield Metric('if_total_bps', bytes_rate*8)
     mysummary.append('%s' % render.networkbandwidth(bytes_rate))
 
     # get worst state from markers

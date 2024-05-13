@@ -44,13 +44,13 @@
 # import api
 from .agent_based_api.v1 import (
     register,
+    Metric,
     Result,
     State,
     Service,
 )
 
 from distutils.version import StrictVersion
-
 
 # factory settings:
 mikrotik_board_factory_settings = {
@@ -66,19 +66,30 @@ def parse_mikrotik_board(string_table):
 
     # loop thru
     for line in string_table:
-
-        # only relevant info
-        if line[0] in ['board-name', 'version']:
-                data[line[0]] = ' '.join(line[1:])
+        data[line[0]] = ' '.join(line[1:])
 
     return data
 
 
 # discovery function
 def discover_mikrotik_board(section):
-
     if section['version']:
         yield Service()
+
+def discover_cpu_utilization_os(section):
+    print(section)
+    if section['cpu-load']:
+        yield Service()
+
+def check_cpu_utilization_os(params, section):
+    mysummary   = []
+    yield Metric('cpus',  int(section['cpu-count'])) 
+    yield Metric('util',  int(section['cpu-load'])) 
+    mysummary.append('Load: %s%%' % section['cpu-load'])
+    mysummary.append('Number of processors: %s' % section['cpu-count'])
+    yield Result(state=State.OK, summary=', '.join(mysummary)
+)
+    return
 
 
 # check function
@@ -106,7 +117,8 @@ def check_mikrotik_board(params, section):
                                     section[what], 
                                     params['min_version']))
         # any info
-        else:
+        elif what in ['board-name', 'version']:
+
             mysummary.append('%s: %s' % (what, section[what]))
 
 
@@ -125,7 +137,6 @@ register.agent_section(
     parse_function      = parse_mikrotik_board,
 )
 
-
 # register check
 register.check_plugin(
     name                     = "mikrotik_board",
@@ -134,4 +145,14 @@ register.check_plugin(
     check_function           = check_mikrotik_board,
     check_ruleset_name       = "mikrotik_board",
     check_default_parameters = mikrotik_board_factory_settings,
+)
+
+
+register.check_plugin(
+    name="mikrotik_board_cpu",
+    sections=["mikrotik_board"],
+    service_name="CPU utilization",
+    discovery_function=discover_cpu_utilization_os,
+    check_function=check_cpu_utilization_os,
+    check_default_parameters={},
 )
