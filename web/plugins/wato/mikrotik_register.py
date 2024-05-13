@@ -100,6 +100,8 @@ def _valuespec_special_agent_mikrotik():
                             ( "ipsec",    _("IPsec")),
                             ( "firewall", _("Firewall Rules")),
                             ( "file",     _("Local File Age")),
+                            ( "interfaces", _("Interfaces")),
+                            ( "netwatch", _("Netwatch")),
                         ],
                         default_value = [ "health", "board" ],
                         allow_empty   = False,
