@@ -674,7 +674,7 @@ for module in command_options.keys():
 
             print ('<<<labels:sep(0)>>>')
             print ('{"cmk/os_family":"mikrotik"}')
-            if 'board-name' in out[0] and out[0]['board-name'] == "CHR":
+            if 'board-name' in out[0] and out[0]['board-name'].split(' ')[0] == "CHR":
                 print ('{"cmk/device_type":"vm"}')
             if 'uptime' in out[0]:
                 print ('<<<uptime>>>')

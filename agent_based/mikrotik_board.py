@@ -107,7 +107,7 @@ def check_mikrotik_board(params, section):
         if what == 'version' and params['min_version'] != '0.0':
             
             # ... then WARN if less the minimum required, else mark OK
-            if StrictVersion(section[what].split(' ')[0]) >= StrictVersion(params['min_version']):
+            if StrictVersion(section[what].split(' ')[0].split('r')[0]) >= StrictVersion(params['min_version']):
                 mysummary.append('%s: %s(.)' % (
                                     what, 
                                     section[what]))

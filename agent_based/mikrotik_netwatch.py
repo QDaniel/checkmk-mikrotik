@@ -144,30 +144,30 @@ def check_mikrotik_netwatch(item, params, section):
     # a now disabled rule was enabled on discovery, so we drop some WARN
     if data['status'] == 'down':
         mysummary.append('status: %s(!!)' % data['status'])
- 
-    #yield Metric('pl',  data['loss-percent']) 
-    mysummary.append('Lost: %s%%' % data['loss-percent'])
+    if "loss-percent" in data.keys():
+        #yield Metric('pl',  data['loss-percent']) 
+        mysummary.append('Lost: %s%%' % data['loss-percent'])
 
-    yield Metric('rta',  data['rtt-avg']) 
-    mysummary.append('Avg: %s' % render.timespan(data['rtt-avg']))
+        yield Metric('rta',  data['rtt-avg']) 
+        mysummary.append('Avg: %s' % render.timespan(data['rtt-avg']))
 
-    yield Metric('rtmin',  data['rtt-min'])
-    mysummary.append('Min: %s' % render.timespan(data['rtt-min']))
+        yield Metric('rtmin',  data['rtt-min'])
+        mysummary.append('Min: %s' % render.timespan(data['rtt-min']))
 
-    yield Metric('rtmax',  data['rtt-max'])
-    mysummary.append('Max: %s' % render.timespan(data['rtt-max']))
+        yield Metric('rtmax',  data['rtt-max'])
+        mysummary.append('Max: %s' % render.timespan(data['rtt-max']))
+        yield from check_levels( float(data['loss-percent']),
+            levels_upper = (10.0, 50.0),
+            metric_name = "pl",
+            label = "Lost Packets",
+            boundaries = (0.0, 100.0),
+            notice_only = True,
+        )
 
     # get worst state from markers
     mysummary = ', '.join(mysummary)
     mystate   = State.CRIT if '!!' in mysummary else State.WARN if '!' in mysummary else State.OK
 
-    yield from check_levels( float(data['loss-percent']),
-        levels_upper = (10.0, 50.0),
-        metric_name = "pl",
-        label = "Lost Packets",
-        boundaries = (0.0, 100.0),
-        notice_only = True,
-    )
     # this is the end, my friend
     yield Result(state=mystate, summary=mysummary)
     return

@@ -14,6 +14,8 @@
                            'mikrotik_file.py',
                            'mikrotik_firewall.py',
                            'mikrotik_ipsec.py',
+                           'mikrotik_interfaces.py',
+                           'mikrotik_netwatch.py',
                            'mikrotik_ospf.py',
                            'mikrotik_power.py',
                            'mikrotik_psu.py',
