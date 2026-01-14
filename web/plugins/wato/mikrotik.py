@@ -83,7 +83,7 @@ def _parameter_valuespec_mikrotik_board():
                 TextAscii(
                     title         = _("Minimum Version"),
                     help          = _("If set check will go WARN if installed version is lower"),
-                    regex         = "^[0-9]*\.[0-9]",
+                    regex         = "^[0-9]*\\.[0-9]",
                     regex_error   = _("Enter a correct version number (e.g. "
                                       "<b><tt>Major.Minor</tt></b> or "
                                       "<b><tt>Major.Minor.Patch</tt></b>)"),
